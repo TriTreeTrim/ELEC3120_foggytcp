@@ -48,8 +48,27 @@ void on_recv_pkt(foggy_socket_t *sock, uint8_t *pkt) {
       // if (get_payload_len(pkt) == 0) handle_congestion_window(sock, pkt);
       sock->window.advertised_window = get_advertised_window(hdr);
       
+      // CP2: On receiving an ACK, slide window forward
+      while (!sock->send_window.empty()) {
+      send_window_slot_t &slot = sock->send_window.front();
+      foggy_tcp_header_t *slot_hdr = (foggy_tcp_header_t *)slot.msg;
+      if (get_payload_len(slot.msg) + get_seq(slot_hdr) > ack) {
+        break;
+      } 
+      else {
+        sock->send_window.pop_front();
+        free(slot.msg);
+      } 
+    }
+      
+      
       // CP3: check if duplicate ACK
-      if (ack == sock->window.last_ack_received) {
+
+      if (get_seq(hdr) == sock->window.last_byte_sent) {
+        sock->window.dup_ack_count = 0;
+      }
+      else {
+        printf("Duplicate ACK: %d %d\n", ack, sock->window.last_ack_received);
         sock->window.dup_ack_count++;
       }
 
@@ -165,7 +184,7 @@ void process_receive_window(foggy_socket_t *sock) {
 /* 1. LOSS RECOVERY */
 void loss_recovery(foggy_socket_t *sock) {
         for (int i = 0; i < sock->send_window.size(); i++) {
-            send_window_slot_t &slot = sock->window.at(i);
+            send_window_slot_t &slot = sock->send_window.at(i);
             foggy_tcp_header_t *hdr = (foggy_tcp_header_t *)slot.msg;
 
             // retransmit the missing pkt
@@ -207,7 +226,7 @@ void update_reno_state(foggy_socket_t *sock) {
       
       // switch state
       if (sock->window.dup_ack_count == 3) {
-        switch_fast_recovery(sock);int *sock
+        switch_fast_recovery(sock);
       }
       else if (sock->window.congestion_window >= sock->window.ssthresh) {
         switch_congestion_avoid(sock);        
@@ -241,6 +260,9 @@ void transmit_send_window(foggy_socket_t *sock) {
   if (sock->send_window.empty()) return;
   
   update_reno_state(sock);
+  
+  // get sending window size
+  uint16_t send_win_size = MIN(sock->window.advertised_window, sock->window.congestion_window);
 
   // send all slots in window
   for (int i = 0; i < sock->send_window.size(); i++) {
