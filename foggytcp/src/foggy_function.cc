@@ -84,6 +84,7 @@ void on_recv_pkt(foggy_socket_t *sock, uint8_t *pkt) {
     }
   }
   
+  
 }
 
 /**
@@ -161,12 +162,28 @@ void process_receive_window(foggy_socket_t *sock) {
 }
 
 /* CP3 Helper Functions */
-/* 1. SWITCH RENO STATE BEGIN */
+/* 1. LOSS RECOVERY */
+void loss_recovery(foggy_socket_t *sock) {
+        for (int i = 0; i < sock->send_window.size(); i++) {
+            send_window_slot_t &slot = sock->window.at(i);
+            foggy_tcp_header_t *hdr = (foggy_tcp_header_t *)slot.msg;
+
+            // retransmit the missing pkt
+            if (get_seq(hdr) == sock->window.last_ack_received) {
+                sendto(sock->socket, slot.msg, get_plen(hdr), 0,
+                       (struct sockaddr *)&(sock->conn), sizeof(sock->conn));
+                break;
+            }
+        }
+}
+
+/* 2. SWITCH RENO STATE */
 void switch_fast_recovery(foggy_socket_t *sock) {
   sock->window.reno_state = RENO_FAST_RECOVERY;
 
   sock->window.ssthresh = sock->window.congestion_window / 2;
   sock->window.congestion_window = sock->window.ssthresh + 3 * MSS;
+  loss_recovery(sock);
 }
 
 void switch_congestion_avoid(foggy_socket_t *sock) {
@@ -218,7 +235,7 @@ void update_reno_state(foggy_socket_t *sock) {
       break;
   }
 }
-/* 1. SWITCH RENO STATE END */
+
 
 void transmit_send_window(foggy_socket_t *sock) {
   if (sock->send_window.empty()) return;
