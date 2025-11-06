@@ -61,6 +61,10 @@ void on_recv_pkt(foggy_socket_t *sock, uint8_t *pkt) {
       } 
     }
       
+                            
+    // CP3: flow control
+    sock->window.advertised_window = get_advertised_window(hdr);
+
       
       // CP3: check if duplicate ACK
 
@@ -68,7 +72,7 @@ void on_recv_pkt(foggy_socket_t *sock, uint8_t *pkt) {
         sock->window.dup_ack_count = 0;
       }
       else {
-        printf("Duplicate ACK: %d %d\n", ack, sock->window.last_ack_received);
+        printf("Duplicate ACK: %d\n Advertised win: %u\n",sock->window.last_ack_received, sock->window.advertised_window);
         sock->window.dup_ack_count++;
       }
 
@@ -262,16 +266,19 @@ void transmit_send_window(foggy_socket_t *sock) {
   update_reno_state(sock);
   
   // get sending window size
-  uint16_t send_win_size = MIN(sock->window.advertised_window, sock->window.congestion_window);
+  uint32_t send_win_size = MIN(sock->window.advertised_window, sock->window.congestion_window);
+  uint32_t win_to_be_sent = send_win_size - (sock->window.last_byte_sent - sock->window.last_ack_received);
+  
 
-  // send all slots in window
+  // send slots in window left (win size - sent pkt)
   for (int i = 0; i < sock->send_window.size(); i++) {
     send_window_slot_t& slot = sock->send_window.at(i);
     foggy_tcp_header_t *hdr = (foggy_tcp_header_t *)slot.msg;
 
     if (slot.is_sent){
       continue;
-    } else {
+    } 
+    else if (!slot.is_sent && win_to_be_sent >= get_payload_len(slot.msg)){
       debug_printf("Sending packet %d %d\n", get_seq(hdr),
                      get_seq(hdr) + get_payload_len(slot.msg));
       slot.is_sent = 1;
