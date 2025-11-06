@@ -1,0 +1,1 @@
+{"virtualbox":{"/vagrant/foggytcp/":{"guestpath":"/vagrant/foggytcp","hostpath":"/home/tree/Documents/ELEC3120/foggytcp/foggytcp","disabled":false,"__vagrantfile":true},"/vagrant":{"guestpath":"/vagrant","hostpath":"/home/tree/Documents/ELEC3120/foggytcp","disabled":false,"__vagrantfile":true}}}
